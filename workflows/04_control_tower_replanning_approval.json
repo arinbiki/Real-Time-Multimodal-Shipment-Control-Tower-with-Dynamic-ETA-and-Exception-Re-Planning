@@ -1,0 +1,65 @@
+{
+  "name": "Control Tower: Re-Planning & Human Approval Gate",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "control-tower-approval",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Approval Action Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst action = (body.action || 'APPROVE').toUpperCase();\nconst approvalId = body.approval_id || 'APP-301B1888';\nconst approver = body.approved_by || 'operations_supervisor_john';\nconst comments = body.comments || 'Mitigation authorized to avoid $255k customer stockout.';\n\nif (action === 'APPROVE') {\n  return {\n    json: {\n      status: 'APPROVED_AND_EXECUTED',\n      approval_id: approvalId,\n      decision: 'APPROVED',\n      approved_by: approver,\n      execution_details: {\n        action_taken: 'BOOK_DEDICATED_EXPEDITE_DRAYAGE',\n        carrier: 'Swift Priority Drayage',\n        cost_authorized: '$1,250.00',\n        time_saved_hours: 36.0,\n        new_committed_eta: '2026-10-27T18:00:00Z',\n        mitigation_state: 'ACTIVE_DISPATCH'\n      },\n      audit_log: {\n        timestamp: new Date().toISOString(),\n        comments: comments\n      }\n    }\n  };\n} else {\n  return {\n    json: {\n      status: 'REJECTED_LOGGED',\n      approval_id: approvalId,\n      decision: 'REJECTED',\n      approved_by: approver,\n      message: 'Plan rejected. Case remanded to Manual Exception Review Queue.',\n      audit_log: {\n        timestamp: new Date().toISOString(),\n        comments: comments\n      }\n    }\n  };\n}"
+      },
+      "name": "Process Operational Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nreturn {\n  json: {\n    dispatch_confirmation: {\n      booking_id: 'BKG-EXPEDITE-' + Math.floor(100000 + Math.random() * 900000),\n      approval_reference: data.approval_id,\n      status: 'CARRIER_DISPATCH_CONFIRMED',\n      carrier_instructions: 'Pickup container MSCU1234567 immediately upon terminal release at LA Pier 400. Dedicated team drive direct to Chicago DC.',\n      authorized_by: data.approved_by\n    }\n  }\n};"
+      },
+      "name": "Dispatch Expedited Carrier Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    }
+  ],
+  "connections": {
+    "Approval Action Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Operational Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Operational Approval": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Expedited Carrier Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

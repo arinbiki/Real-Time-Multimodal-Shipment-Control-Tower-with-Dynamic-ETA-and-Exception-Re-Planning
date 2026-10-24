@@ -1,0 +1,38 @@
+# Environment secrets and local configurations
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# SQLite databases & large synthetic benchmark data
+*.db
+*.sqlite
+*.sqlite3
+synthetic_events_1m.db
+control_tower.db
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary logs & test artifacts
+*.log
+scratch/

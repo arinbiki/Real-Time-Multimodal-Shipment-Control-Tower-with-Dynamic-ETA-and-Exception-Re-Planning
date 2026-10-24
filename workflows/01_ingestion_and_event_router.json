@@ -1,0 +1,109 @@
+{
+  "name": "Control Tower: Ingestion & Event Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "control-tower-events",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook Ingestion Receiver",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.item.json.body || $input.item.json;\n\n// 1. Normalization Logic (Section 9)\nconst status = (payload.status || payload.event_type || 'IN_TRANSIT').toUpperCase().trim();\nconst container = (payload.container_no || payload.container || '').toUpperCase().trim();\nconst bol = (payload.bol_no || payload.bol || '').toUpperCase().trim();\nconst po = (payload.po_number || payload.po || '').toUpperCase().trim();\nconst carrier = (payload.carrier_code || payload.carrier || 'CMA CGM').toUpperCase().trim();\nconst locCode = (payload.location_code || 'USLAX').toUpperCase().trim();\nconst delayReason = payload.delay_reason || payload.reason || (status === 'CUSTOMS_HOLD' ? 'Mandatory CBP intensive x-ray exam' : (status === 'DELAYED' ? 'Severe terminal berth congestion' : null));\nconst delayBufferHours = parseFloat(payload.delay_hours_estimate || (status === 'CUSTOMS_HOLD' ? 48.0 : (status === 'DELAYED' ? 24.0 : 0.0)));\n\n// 2. Entity Resolution Logic (Section 8: 3-Tier Match)\nlet shipmentId = 'SHP-OCEAN-1001';\nlet customer = 'Apex Global Retail Corp';\nlet customerTier = 'TIER_1_STRATEGIC';\nlet matchTier = 'Tier 1: Exact Container Number Match (' + (container || 'MSCU1234567') + ')';\nlet matchConfidence = 0.98;\n\nif (po.includes('TITAN') || container.includes('SWIFT')) {\n  shipmentId = 'SHP-TRUCK-2002';\n  customer = 'Titan Automotive Assembly';\n  customerTier = 'TIER_1_STRATEGIC';\n  matchTier = 'Tier 2: Purchase Order Match (' + po + ')';\n  matchConfidence = 0.90;\n}\n\n// 3. Dynamic ETA Engine (Section 12)\nconst baselineEta = new Date('2026-10-28T12:00:00Z');\nconst requiredDate = new Date('2026-10-29T12:00:00Z');\nconst currentEta = new Date(baselineEta.getTime() + (delayBufferHours * 3600 * 1000));\nconst delayHoursVsRequired = (currentEta.getTime() - requiredDate.getTime()) / (3600 * 1000);\nconst daysLate = Math.max(0, delayHoursVsRequired / 24.0);\n\n// 4. Exception Rules Engine (Section 13: Rules 1-5)\nconst exceptions = [];\nif (status === 'CUSTOMS_HOLD') {\n  exceptions.push({\n    rule_id: 'RULE_02_CUSTOMS_HOLD',\n    severity: 'P1_CRITICAL',\n    category: 'CUSTOMS_HOLD',\n    title: 'Critical Customs Examination Hold',\n    details: 'Customs authority placed intensive examination hold at ' + locCode + '. Release documentation required.',\n    impact_score: 85.0\n  });\n}\nif (delayHoursVsRequired > 2.0) { // SLA tolerance for Tier 1 Strategic is 2 hours\n  exceptions.push({\n    rule_id: 'RULE_01_SLA_BREACH',\n    severity: 'P1_CRITICAL',\n    category: 'DELAY_RISK',\n    title: 'Delivery SLA Breach Risk (' + customerTier + ')',\n    details: 'Dynamic ETA (' + currentEta.toISOString() + ') breaches customer required delivery date by ' + delayHoursVsRequired.toFixed(1) + ' hours.',\n    impact_score: Math.min(100.0, delayHoursVsRequired * 2.5)\n  });\n}\nif (parseFloat(payload.dwell_hours || 0) > 48.0) {\n  exceptions.push({\n    rule_id: 'RULE_04_DWELL_EXCEEDED',\n    severity: 'P2_HIGH',\n    category: 'DWELL_EXCEEDED',\n    title: 'Demurrage Threat: Terminal Dwell Exceeded',\n    details: 'Container has dwelled at terminal for ' + payload.dwell_hours + ' hours. Daily demurrage charge imminent.',\n    impact_score: 75.0\n  });\n}\n\n// 5. Business Impact Analysis Engine (Section 14)\nlet impact = null;\nlet recommendations = [];\nif (exceptions.length > 0) {\n  const revenueAtRisk = 255000.0;\n  const contractPenalty = daysLate * 750.0;\n  const stockoutProb = Math.min(1.0, 0.40 + (daysLate * 0.25));\n  const totalRisk = contractPenalty + (revenueAtRisk * stockoutProb);\n  \n  impact = {\n    revenue_at_risk: revenueAtRisk,\n    penalty_at_risk: contractPenalty,\n    stockout_risk_prob: stockoutProb,\n    urgency_level: 'IMMEDIATE_INTERVENTION',\n    total_financial_risk: totalRisk\n  };\n\n  // 6. Recovery Re-Planning Engine (Section 15)\n  recommendations = [\n    {\n      recommendation_id: 'REC-AIR-01',\n      option_type: 'AIR_UPGRADE',\n      title: 'Emergency Air Cargo Re-routing (Direct Flight)',\n      cost_estimate: 4200.0,\n      hours_saved: 72.0,\n      net_service_score: 1540.0,\n      approval_tier: 'TIER_3_MANAGER',\n      feasibility: 'FEASIBLE_SUBJECT_TO_CUSTOMS_CLEARANCE'\n    },\n    {\n      recommendation_id: 'REC-DRAY-02',\n      option_type: 'EXPEDITE_FINAL_MILE',\n      title: 'Dedicated Team Drayage Hotshot Truck',\n      cost_estimate: 1250.0,\n      hours_saved: 36.0,\n      net_service_score: 850.0,\n      approval_tier: 'TIER_2_SUPERVISOR',\n      feasibility: 'FEASIBLE_VERIFIED'\n    },\n    {\n      recommendation_id: 'REC-NOTIFY-03',\n      option_type: 'NOTIFY_STAKEHOLDER',\n      title: 'Proactively Notify Customer & Reschedule Appointment',\n      cost_estimate: 0.0,\n      hours_saved: 0.0,\n      net_service_score: 150.0,\n      approval_tier: 'TIER_1_AUTO',\n      feasibility: 'FEASIBLE_ALWAYS'\n    }\n  ];\n}\n\nreturn {\n  json: {\n    status: 'PROCESSED_SUCCESSFULLY',\n    shipment_id: shipmentId,\n    customer: customer,\n    customer_tier: customerTier,\n    resolution: {\n      match_tier: matchTier,\n      confidence: matchConfidence\n    },\n    event_summary: {\n      raw_status: status,\n      normalized_event: status === 'ARRIVED_PORT' ? 'ARRIVED_AT_PORT' : (status === 'DISCH' ? 'DISCHARGED_FROM_VESSEL' : status),\n      location: locCode,\n      carrier: carrier,\n      delay_reason: delayReason\n    },\n    dynamic_eta: currentEta.toISOString(),\n    baseline_eta: baselineEta.toISOString(),\n    delay_hours: delayBufferHours,\n    exceptions_count: exceptions.length,\n    exceptions: exceptions,\n    impact: impact,\n    recommendations: recommendations,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "name": "Control Tower Decision Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.exceptions_count}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Exception Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [620, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nreturn {\n  json: {\n    dispatch_status: 'CRITICAL_EXCEPTION_ALERT_DISPATCHED',\n    alert_channel: '#ops-control-tower-urgent',\n    shipment_id: data.shipment_id,\n    customer: data.customer,\n    severity: data.exceptions[0].severity,\n    title: data.exceptions[0].title,\n    financial_risk: '$' + (data.impact.total_financial_risk).toLocaleString(),\n    dynamic_eta: data.dynamic_eta,\n    top_recommended_action: data.recommendations[0].title,\n    approval_required: data.recommendations[0].approval_tier\n  }\n};"
+      },
+      "name": "Dispatch Critical Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nreturn {\n  json: {\n    dispatch_status: 'NORMAL_TRANSIT_CONFIRMED',\n    shipment_id: data.shipment_id,\n    dynamic_eta: data.dynamic_eta,\n    location: data.event_summary.location,\n    message: 'Shipment milestone on schedule. No exceptions.'\n  }\n};"
+      },
+      "name": "Acknowledge Normal Transit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Ingestion Receiver": {
+      "main": [
+        [
+          {
+            "node": "Control Tower Decision Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Control Tower Decision Engine": {
+      "main": [
+        [
+          {
+            "node": "Exception Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exception Check": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acknowledge Normal Transit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Real-Time Multimodal Shipment Control Tower Architecture",
+    "output": "control_tower_architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "feeds", "type": "external", "label": "External Feeds", "sublabel": "EDI / AIS / Port Portals", "pos": [40, 220], "size": [140, 64], "tag": "Raw Events" },
+    { "id": "carrier_emails", "type": "external", "label": "Carrier Emails", "sublabel": "Unstructured Delay Notices", "pos": [40, 380], "size": [140, 64], "tag": "IMAP / Webhook" },
+    { "id": "n8n_router", "type": "backend", "label": "n8n Event Router", "sublabel": "Workflow 1 (Ingest)", "pos": [260, 220], "size": [150, 64], "tag": "Port 5678" },
+    { "id": "n8n_email", "type": "backend", "label": "n8n Email NLP Flow", "sublabel": "Workflow 2 (NLP Parser)", "pos": [260, 380], "size": [150, 64] },
+    { "id": "n8n_eta_exception", "type": "backend", "label": "n8n ETA & Exception", "sublabel": "Workflow 3 (Evaluation)", "pos": [450, 220], "size": [150, 64] },
+    { "id": "n8n_approval", "type": "backend", "label": "n8n Approval Gate", "sublabel": "Workflow 4 (Re-planning)", "pos": [450, 380], "size": [150, 64] },
+    { "id": "decision_engine", "type": "backend", "label": "Decision Engine Core", "sublabel": "Python / Native Code Node", "pos": [680, 220], "size": [160, 64], "tag": "Sub-5ms Logic" },
+    { "id": "qwen_ai", "type": "cloud", "label": "Qwen 2.5 NLP", "sublabel": "Ollama (11434) / Groq Cloud", "pos": [680, 380], "size": [160, 64], "tag": "LLM Extractor" },
+    { "id": "sqlite_db", "type": "database", "label": "Operational SQLite", "sublabel": "control_tower.db", "pos": [880, 220], "size": [150, 64], "tag": "Audit & State" },
+    { "id": "stakeholders", "type": "external", "label": "Human Supervisors", "sublabel": "Slack / Webhook Action", "pos": [1080, 380], "size": [150, 64], "tag": "Operations VP" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "n8n Workflow Automation Mesh", "wraps": ["n8n_router", "n8n_email", "n8n_eta_exception", "n8n_approval"] },
+    { "kind": "security-group", "label": "Intelligence & Analytics Backbone", "wraps": ["decision_engine", "qwen_ai", "sqlite_db"] }
+  ],
+  "connections": [
+    { "id": "feed-to-router", "from": "feeds", "to": "n8n_router", "label": "HTTP Webhook", "variant": "emphasis" },
+    { "id": "email-to-n8n", "from": "carrier_emails", "to": "n8n_email", "label": "Inbound Email" },
+    { "id": "email-to-qwen", "from": "n8n_email", "to": "qwen_ai", "label": "JSON Prompt", "variant": "dashed" },
+    { "id": "router-to-eta", "from": "n8n_router", "to": "n8n_eta_exception", "label": "Normalized Event" },
+    { "id": "eta-to-engine", "from": "n8n_eta_exception", "to": "decision_engine", "label": "Evaluate Rules" },
+    { "id": "engine-to-db", "from": "decision_engine", "to": "sqlite_db", "label": "State & Audit" },
+    { "id": "eta-to-approval", "from": "n8n_eta_exception", "to": "n8n_approval", "label": "P1 Breach Escalation" },
+    { "id": "approval-to-human", "from": "n8n_approval", "to": "stakeholders", "label": "Tiered Approval", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Real-Time Ingestion", "items": ["Multi-modal event normalizer for Ocean, Rail, Road, Air", "Native dedup & out-of-order state machine in n8n"] },
+    { "dot": "emerald", "title": "Dynamic Decision Core", "items": ["Dynamic transit recalculation with dwell penalty buffers", "P1 critical SLA breach detection with financial exposure valuation"] },
+    { "dot": "rose", "title": "Human-in-the-Loop Gate", "items": ["Tiered approval routing (<$250 auto, $250-$1500 supervisor, >$5000 VP)", "Zero-secret Git-ready architecture with pure environment-driven config"] }
+  ]
+}

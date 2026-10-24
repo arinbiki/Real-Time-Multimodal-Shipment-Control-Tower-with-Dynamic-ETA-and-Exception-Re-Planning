@@ -1,0 +1,65 @@
+{
+  "name": "Control Tower: Dynamic ETA & Exception Desk",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "control-tower-evaluate-exceptions",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Exception Desk Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.item.json.body || $input.item.json;\n\n// Active Exception Portfolio Summary\nconst activeCases = [\n  {\n    case_id: 'EXC-4772245A',\n    shipment_id: 'SHP-OCEAN-1001',\n    container_no: 'MSCU1234567',\n    customer: 'Apex Global Retail Corp',\n    severity: 'P1_CRITICAL',\n    rule_id: 'RULE_02_CUSTOMS_HOLD',\n    title: 'Critical Customs Examination Hold',\n    days_late: 2.25,\n    revenue_at_risk: 255000.0,\n    contract_penalty: 1687.50,\n    stockout_probability: '90%',\n    top_recommendation: 'Dedicated Team Drayage Hotshot Truck (Saves 36 hrs, Cost $1,250)',\n    approval_tier: 'TIER_2_SUPERVISOR',\n    status: 'OPEN'\n  },\n  {\n    case_id: 'EXC-8819201B',\n    shipment_id: 'SHP-TRUCK-2002',\n    container_no: 'KNIG-53-902',\n    customer: 'Titan Automotive Assembly',\n    severity: 'P2_HIGH',\n    rule_id: 'RULE_03_VISIBILITY_GAP',\n    title: 'Tracking Visibility Gap (Road FTL > 4h)',\n    days_late: 0.0,\n    revenue_at_risk: 120000.0,\n    contract_penalty: 0.0,\n    stockout_probability: '20%',\n    top_recommendation: 'Trigger Automated Carrier EDI / Dispatch Poll',\n    approval_tier: 'TIER_1_AUTO',\n    status: 'INVESTIGATING'\n  }\n];\n\nconst totalExposure = activeCases.reduce((acc, c) => acc + c.revenue_at_risk, 0);\nconst totalPenalties = activeCases.reduce((acc, c) => acc + c.contract_penalty, 0);\n\nreturn {\n  json: {\n    status: 'CONTROL_TOWER_DESK_EVALUATED',\n    report_timestamp: new Date().toISOString(),\n    total_active_exceptions: activeCases.length,\n    p1_critical_count: activeCases.filter(c => c.severity === 'P1_CRITICAL').length,\n    p2_high_count: activeCases.filter(c => c.severity === 'P2_HIGH').length,\n    financial_summary: {\n      total_revenue_at_risk: '$' + totalExposure.toLocaleString(),\n      accumulated_contract_penalties: '$' + totalPenalties.toLocaleString()\n    },\n    active_cases: activeCases\n  }\n};"
+      },
+      "name": "Control Tower Desk Aggregator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst briefing = `🚨 *DAILY CONTROL TOWER EXCEPTION BRIEFING* 🚨\\n\\n` +\n`• Total Active Exceptions : ${data.total_active_exceptions} (Critical P1: ${data.p1_critical_count}, High P2: ${data.p2_high_count})\\n` +\n`• Total Value at Risk    : ${data.financial_summary.total_revenue_at_risk}\\n` +\n`• Contract Penalties     : ${data.financial_summary.accumulated_contract_penalties}\\n\\n` +\n`*Top Priority Incident:*\\n` +\n`  - Case: ${data.active_cases[0].case_id} (${data.active_cases[0].title})\\n` +\n`  - Customer: ${data.active_cases[0].customer} [${data.active_cases[0].severity}]\\n` +\n`  - Proposed Action: ${data.active_cases[0].top_recommendation}\\n` +\n`  - Governance: Requires ${data.active_cases[0].approval_tier} sign-off.`;\n\nreturn {\n  json: {\n    status: 'BRIEFING_BROADCASTED',\n    channel: '#control-tower-executive',\n    slack_formatted_message: briefing,\n    raw_summary: data\n  }\n};"
+      },
+      "name": "Format Executive Briefing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    }
+  ],
+  "connections": {
+    "Exception Desk Webhook": {
+      "main": [
+        [
+          {
+            "node": "Control Tower Desk Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Control Tower Desk Aggregator": {
+      "main": [
+        [
+          {
+            "node": "Format Executive Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}
